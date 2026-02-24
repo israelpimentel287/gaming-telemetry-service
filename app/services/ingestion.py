@@ -1,6 +1,7 @@
 from app.schemas.event import GameEvent
 from sqlalchemy.orm import Session
 from app.models.event import GameEventModel
+from typing import List
 
 async def ingest_event(event: GameEvent, db: Session):
     exisiting = db.query(GameEventModel).filter(
@@ -22,3 +23,17 @@ async def ingest_event(event: GameEvent, db: Session):
     db.commit()
 
     return {"message": "Event received", "event_id": str(event.event_id)}
+
+async def ingest_batch(events: List[GameEvent], db: Session):
+    ingested = 0
+    skipped = 0
+
+    for event in events:
+        result = await ingest_event(event, db)
+        if result["message"] == "Event already exists":
+            skipped += 1
+        else:
+            ingested += 1
+    
+    return {"ingested": ingested, "skipped": skipped}
+
