@@ -1,0 +1,1 @@
+- Migrate ingestion service to AsyncSession + asyncpg to avoid blocking the event loop under concurrent load
