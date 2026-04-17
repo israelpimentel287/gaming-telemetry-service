@@ -80,7 +80,7 @@ def flagged_player(
 
 @router.get("/player-risk-score/{player_id}", response_model=PRSResponse)
 def get_score(
-    player_id: int,
+    player_id: str,
     db: Session = Depends(get_db)
 ):
     score = player_risk_score(db, player_id)

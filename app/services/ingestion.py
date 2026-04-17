@@ -16,7 +16,8 @@ async def ingest_event(event: GameEvent, db: Session):
         event_type=event.event_type,
         player_id=event.player_id,
         session_id=event.session_id,
-        timestamp=event.timestamp
+        timestamp=event.timestamp,
+        event_data=event.metadata.model_dump() if event.metadata else None
     )
 
     db.add(db_event)

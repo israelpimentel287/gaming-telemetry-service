@@ -9,6 +9,6 @@ class Playerflag(Base):
     player_id = Column(String, index=True)
     flag_type = Column(String)
     severity = Column(String)
-    timestamp = Column(DateTime, index=True)
+    timestamp = Column(DateTime(timezone=True), index=True)
     context = Column(JSONB)
     status = Column(String)

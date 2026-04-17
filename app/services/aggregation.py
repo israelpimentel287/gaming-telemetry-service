@@ -104,8 +104,9 @@ def player_risk_score(db: Session,  player_id) -> Optional[PRSResponse]:
     
     risks = {
         "low": 1/3,
-        "med": 2/3,
-        "high": 3/3
+        "medium": 2/3,
+        "high": 3/3,
+        "critical": 4/3
     }
     
     total = 0

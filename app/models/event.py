@@ -1,4 +1,5 @@
 from sqlalchemy import Column, DateTime, String, Index
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.database import Base
 
@@ -12,5 +13,5 @@ class GameEventModel(Base):
     event_type = Column(String, nullable=False)
     player_id = Column(String, nullable=False)
     session_id = Column(String, nullable=False)
-    timestamp = Column(DateTime, nullable=False)
-
+    timestamp = Column(DateTime(timezone=True), nullable=False)
+    event_data = Column(JSONB)
