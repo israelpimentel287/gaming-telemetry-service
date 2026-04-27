@@ -7,6 +7,8 @@ class GameEventModel(Base):
     __tablename__ = "game_events"
     __table_args__ = (
         Index('ix_game_events_player_timestamp', 'player_id', 'timestamp'),
+
+        Index('ix_game_events_timestamp', 'timestamp')
     )
 
     event_id = Column(UUID(as_uuid=True), primary_key=True)

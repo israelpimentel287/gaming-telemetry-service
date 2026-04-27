@@ -1,14 +1,15 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import func, distinct
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, distinct, select
 from app.models.event import GameEventModel
 from app.models.player_flag import Playerflag
-from app.schemas.metric import DAUResponse, EBTResponse, PercentileResponse, FlaggedResponse, PRSResponse
+from app.schemas.metric import DAUResponse, EBTResponse, PercentileResponse, FlaggedResponse, PRSResponse, PaginatedFlaggedResponse
 from typing import Optional
+from datetime import datetime, timedelta
 
-def get_dau(db: Session, start_date, end_date) -> list[DAUResponse]:
+async def get_dau(db: AsyncSession, start_date, end_date) -> list[DAUResponse]:
 
     active_players = (
-        db.query(
+        select(
             func.count(distinct(GameEventModel.player_id)), 
             func.date((GameEventModel.timestamp)
         ))
@@ -16,7 +17,8 @@ def get_dau(db: Session, start_date, end_date) -> list[DAUResponse]:
         .group_by(func.date(GameEventModel.timestamp))
     )
 
-    results = active_players.all()
+    result = await db.execute(active_players)
+    results = result.all()
 
     return[
         DAUResponse(
@@ -25,17 +27,20 @@ def get_dau(db: Session, start_date, end_date) -> list[DAUResponse]:
         )for row in results
     ]
 
-def get_events_by_type(db: Session, cutoff) -> list[EBTResponse]:
+async def get_events_by_type(db: AsyncSession, cutoff) -> list[EBTResponse]:
 
-    results = (
-        db.query(
+    events = (
+        select(
             GameEventModel.event_type,
             func.count(GameEventModel.event_id)
         )
         .filter(GameEventModel.timestamp >= cutoff)
         .group_by(GameEventModel.event_type)
-        .all()
     )
+
+    result = await db.execute(events)
+    results = result.all()
+
 
     return[
         EBTResponse(
@@ -44,9 +49,9 @@ def get_events_by_type(db: Session, cutoff) -> list[EBTResponse]:
         )for row in results
     ]
 
-def get_percentile_per_session(db: Session, percentiles:list[int]) -> list[PercentileResponse]:
+async def get_percentile_per_session(db: AsyncSession, percentiles:list[int]) -> list[PercentileResponse]:
     sessions = (
-        db.query(
+        select(
             (func.max(GameEventModel.timestamp) - func.min(GameEventModel.timestamp)).label("duration")
         ).group_by(GameEventModel.session_id)
     ).subquery()
@@ -55,12 +60,14 @@ def get_percentile_per_session(db: Session, percentiles:list[int]) -> list[Perce
 
     for p in percentiles:
         duration = (
-            db.query(
-                func.percentile_cont(p / 100).within_group(sessions.c.duration)
+            select(
+                    func.percentile_cont(p / 100).within_group(sessions.c.duration)
             )
             .select_from(sessions)
-            .scalar()
+        
         )
+
+        duration = await db.scalar(duration) or timedelta(0)
 
         results.append(
             PercentileResponse(
@@ -71,33 +78,39 @@ def get_percentile_per_session(db: Session, percentiles:list[int]) -> list[Perce
     
     return results
 
-def get_flagged_player(db: Session, severity : Optional[str] = None , limit: int = 100) -> list[FlaggedResponse]:
-    flagged = db.query(Playerflag)
+async def get_flagged_player(db: AsyncSession, cursor: Optional[datetime] = None, severity : Optional[str] = None , limit: int = 100) -> PaginatedFlaggedResponse:
+
+    flagged = select(Playerflag)
 
     if severity is not None:
         flagged = flagged.filter(Playerflag.severity == severity)
     
-    results = flagged.limit(limit).all()
+    if cursor is not None:
+        flagged = flagged.filter(Playerflag.timestamp < cursor)
 
-    return [
-        FlaggedResponse(
-            player_id=row.player_id,
-            flag_type=row.flag_type,
-            severity=row.severity,
-            status=row.status,
-            context=row.context,
-            timestamp=row.timestamp 
-        )for row in results 
-    ]
+    results = (
+        flagged.order_by(Playerflag.timestamp.desc())
+        .limit(limit)
+    )
 
-def player_risk_score(db: Session,  player_id) -> Optional[PRSResponse]:
-    player_flagged = db.query(
+    result = await db.execute(results)
+    results = result.scalars().all()
+
+    items = [FlaggedResponse.from_orm(row) for row in results]
+    next_cursor = items[-1].timestamp if results else None
+    
+    return PaginatedFlaggedResponse( items=items, next_cursor=next_cursor)
+
+
+async def player_risk_score(db: AsyncSession,  player_id) -> Optional[PRSResponse]:
+    player_flagged = select(
         Playerflag.flag_type,
         Playerflag.severity,
         Playerflag.timestamp
         ).filter(Playerflag.player_id == player_id)
     
-    results = player_flagged.all()
+    result = await db.execute(player_flagged)
+    results = result.all()
     
     if not results:
         return None

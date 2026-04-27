@@ -2,6 +2,7 @@ from logging.config import fileConfig
 from app.db.database import Base
 from app.models.event import GameEventModel
 from app.models.player_flag import Playerflag
+from app.models.cohort_stats import CohortStats
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
