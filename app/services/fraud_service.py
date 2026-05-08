@@ -6,10 +6,9 @@ from app.schemas.event import GameEvent
 from app.db.database import SessionLocal
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import timezone, datetime, timedelta
-import statistics
-import logging
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("fraud_service")
 ANALYZED_EVENTS = {"player_move", "score_update", "session_end"}
 
 class FraudDetectionService:

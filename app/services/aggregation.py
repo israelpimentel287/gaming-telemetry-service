@@ -5,6 +5,9 @@ from app.models.player_flag import Playerflag
 from app.schemas.metric import DAUResponse, EBTResponse, PercentileResponse, FlaggedResponse, PRSResponse, PaginatedFlaggedResponse
 from typing import Optional
 from datetime import datetime, timedelta
+from app.core.logging import get_logger
+
+logger = get_logger("aggregation")
 
 async def get_dau(db: AsyncSession, start_date, end_date) -> list[DAUResponse]:
 

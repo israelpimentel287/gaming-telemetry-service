@@ -5,7 +5,9 @@ from app.schemas.event import GameEvent
 from app.services.fraud_service import FraudDetectionService
 from app.services import ingestion
 from typing import List
+from app.core.logging import get_logger
 
+logger = get_logger("events")
 
 router = APIRouter()
 
@@ -17,5 +19,7 @@ async def ingest_event(event: GameEvent, background_tasks: BackgroundTasks, db: 
     return await ingestion.ingest_event(event, db)
 
 @router.post("/events/batch")
-async def ingest_batch(events: List[GameEvent], db: AsyncSession = Depends(get_db)):
+async def ingest_batch(events: List[GameEvent], background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    for event in events:
+        background_tasks.add_task(fraud_service.analyze_event, event)
     return await ingestion.ingest_batch(events, db)

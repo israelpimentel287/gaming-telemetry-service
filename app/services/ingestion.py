@@ -3,6 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.event import GameEventModel
 from typing import List
+from app.core.logging import get_logger
+
+logger = get_logger("ingestion")
 
 async def ingest_event(event: GameEvent, db: AsyncSession):
     exisiting = select(GameEventModel).filter(

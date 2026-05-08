@@ -6,6 +6,9 @@ from app.schemas.metric import DAUResponse, EBTResponse, PercentileResponse, Fla
 from app.services.aggregation import get_dau, get_events_by_type, get_percentile_per_session, get_flagged_player, player_risk_score
 import re
 from typing import Optional
+from app.core.logging import get_logger
+
+logger = get_logger("metrics")
 
 
 router = APIRouter(prefix="/metrics")
