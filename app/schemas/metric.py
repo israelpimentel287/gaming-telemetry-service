@@ -15,6 +15,8 @@ class PercentileResponse(BaseModel):
     duration: timedelta
 
 class FlaggedResponse(BaseModel):
+    model_config = {"from_attributes": True}
+    
     player_id: str
     flag_type: str
     severity: str
