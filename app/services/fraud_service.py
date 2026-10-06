@@ -1,12 +1,15 @@
-from sqlalchemy import desc, func, select
-from app.models.event import GameEventModel
+import statistics
+from datetime import datetime, timedelta, timezone
 from typing import Sequence
+
+from sqlalchemy import desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.logging import get_logger
+from app.db.database import SessionLocal
+from app.models.event import GameEventModel
 from app.models.player_flag import Playerflag
 from app.schemas.event import GameEvent
-from app.db.database import SessionLocal
-from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import timezone, datetime, timedelta
-from app.core.logging import get_logger
 
 logger = get_logger("fraud_service")
 ANALYZED_EVENTS = {"player_move", "score_update", "session_end"}
@@ -74,7 +77,8 @@ class FraudDetectionService:
                             GameEventModel.player_id == event.player_id,
                             GameEventModel.session_id == event.session_id,
                             GameEventModel.event_type == "player_move",
-                            GameEventModel.timestamp > cutoff
+                            GameEventModel.timestamp > cutoff,
+                            GameEventModel.timestamp <= event.timestamp
                         )
 
                     )
