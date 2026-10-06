@@ -1,6 +1,8 @@
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel
-from datetime import date, timedelta, datetime
-from typing import Dict, Any, Optional, List
+
 
 class DAUResponse(BaseModel):
     date: date
@@ -32,4 +34,5 @@ class PRSResponse(BaseModel):
 
 class PaginatedFlaggedResponse(BaseModel):
     items: List[FlaggedResponse]
-    next_cursor: Optional[datetime]
+    next_cursor_timestamp: Optional[datetime]
+    next_cursor_flag_id: Optional[int]

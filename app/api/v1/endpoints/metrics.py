@@ -1,12 +1,27 @@
-from fastapi import APIRouter, status, Depends, HTTPException
-from datetime import date, datetime, timedelta, timezone
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.dependencies import get_db
-from app.schemas.metric import DAUResponse, EBTResponse, PercentileResponse, FlaggedResponse, PRSResponse, PaginatedFlaggedResponse
-from app.services.aggregation import get_dau, get_events_by_type, get_percentile_per_session, get_flagged_player, player_risk_score
 import re
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.logging import get_logger
+from app.dependencies import get_db
+from app.schemas.metric import (
+    DAUResponse,
+    EBTResponse,
+    FlaggedResponse,
+    PaginatedFlaggedResponse,
+    PercentileResponse,
+    PRSResponse,
+)
+from app.services.aggregation import (
+    get_dau,
+    get_events_by_type,
+    get_flagged_player,
+    get_percentile_per_session,
+    player_risk_score,
+)
 
 logger = get_logger("metrics")
 
@@ -75,12 +90,20 @@ async def percentage_per_session(
 
 @router.get("/flagged-players", response_model=PaginatedFlaggedResponse)
 async def flagged_player(
-    cursor: Optional[datetime] = None,
+    cursor_timestamp: Optional[datetime] = None,
+    cursor_flag_id: Optional[int] = None,
     severity: Optional[str] = None,
     limit: int = 100,
     db: AsyncSession = Depends(get_db)
 ):
-    return await get_flagged_player(db, cursor, severity, limit)
+
+    if (cursor_timestamp is None) != (cursor_flag_id is None):
+        raise HTTPException(
+            status_code=400,
+            detail="cursor_timestamp and cursor_flag_id must be provided together",
+        )
+    
+    return await get_flagged_player(db, cursor_timestamp, cursor_flag_id, severity, limit)
 
 @router.get("/player-risk-score/{player_id}", response_model=PRSResponse)
 async def get_score(

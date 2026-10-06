@@ -1,11 +1,20 @@
+from datetime import datetime, timedelta
+from typing import Optional, cast
+
+from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, distinct, select
+
+from app.core.logging import get_logger
 from app.models.event import GameEventModel
 from app.models.player_flag import Playerflag
-from app.schemas.metric import DAUResponse, EBTResponse, PercentileResponse, FlaggedResponse, PRSResponse, PaginatedFlaggedResponse
-from typing import Optional
-from datetime import datetime, timedelta
-from app.core.logging import get_logger
+from app.schemas.metric import (
+    DAUResponse,
+    EBTResponse,
+    FlaggedResponse,
+    PaginatedFlaggedResponse,
+    PercentileResponse,
+    PRSResponse,
+)
 
 logger = get_logger("aggregation")
 
@@ -14,8 +23,8 @@ async def get_dau(db: AsyncSession, start_date, end_date) -> list[DAUResponse]:
     active_players = (
         select(
             func.count(distinct(GameEventModel.player_id)), 
-            func.date((GameEventModel.timestamp)
-        ))
+            func.date(GameEventModel.timestamp)
+        )
         .filter(GameEventModel.timestamp.between(start_date, end_date))
         .group_by(func.date(GameEventModel.timestamp))
     )
@@ -81,18 +90,26 @@ async def get_percentile_per_session(db: AsyncSession, percentiles:list[int]) ->
     
     return results
 
-async def get_flagged_player(db: AsyncSession, cursor: Optional[datetime] = None, severity : Optional[str] = None , limit: int = 100) -> PaginatedFlaggedResponse:
+async def get_flagged_player(db: AsyncSession, cursor_timestamp: Optional[datetime] = None, cursor_flag_id: Optional[int] = None, severity: Optional[str] = None, limit: int = 100) -> PaginatedFlaggedResponse:
 
     flagged = select(Playerflag)
 
     if severity is not None:
         flagged = flagged.filter(Playerflag.severity == severity)
     
-    if cursor is not None:
-        flagged = flagged.filter(Playerflag.timestamp < cursor)
-
+    if cursor_timestamp is not None and cursor_flag_id is not None:
+        flagged = flagged.filter(
+            (Playerflag.timestamp < cursor_timestamp)
+            | (
+                (Playerflag.timestamp == cursor_timestamp)
+                & (Playerflag.flag_id < cursor_flag_id)
+            )
+        )
     results = (
-        flagged.order_by(Playerflag.timestamp.desc())
+        flagged.order_by(
+            Playerflag.timestamp.desc(),
+            Playerflag.flag_id.desc()
+        )
         .limit(limit)
     )
 
@@ -100,9 +117,19 @@ async def get_flagged_player(db: AsyncSession, cursor: Optional[datetime] = None
     results = result.scalars().all()
 
     items = [FlaggedResponse.from_orm(row) for row in results]
-    next_cursor = items[-1].timestamp if results else None
-    
-    return PaginatedFlaggedResponse( items=items, next_cursor=next_cursor)
+
+    if results:
+        next_cursor_timestamp = cast(datetime, results[-1].timestamp)
+        next_cursor_flag_id = cast(int, results[-1].flag_id)
+    else:
+        next_cursor_timestamp = None
+        next_cursor_flag_id = None
+
+    return PaginatedFlaggedResponse(
+        items=items,
+        next_cursor_timestamp=next_cursor_timestamp,
+        next_cursor_flag_id=next_cursor_flag_id,
+    )
 
 
 async def player_risk_score(db: AsyncSession,  player_id) -> Optional[PRSResponse]:
