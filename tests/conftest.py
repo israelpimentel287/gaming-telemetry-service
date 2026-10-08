@@ -1,9 +1,13 @@
+import os
+
+os.environ["DATABASE_URL"] = "postgresql+asyncpg://test_user:test_pass@localhost/test_db"
+
 import pytest
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from app.main import app
 from app.db.database import Base
 from app.dependencies import get_db
+from app.main import app
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 DATABASE_URL = "postgresql+asyncpg://test_user:test_pass@localhost/test_db"
 

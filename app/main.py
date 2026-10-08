@@ -1,16 +1,22 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends
+
+from fastapi import Depends, FastAPI
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.v1.endpoints.events import router
 from app.api.v1.endpoints.metrics import router as metrics_router
-from app.scheduler import scheduler, compute_cohort_stats
-from app.core.exceptions import AppException, app_exception_handler, unhandled_exception_handler
+from app.core.exceptions import (
+    AppException,
+    app_exception_handler,
+    unhandled_exception_handler,
+)
 from app.core.logging import setup_logging
 from app.dependencies import get_db
 from app.middleware.correlation import CorrelationIDMiddleware
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi.responses import JSONResponse
-from sqlalchemy import text
 from app.middleware.logging import LoggingMiddleware
+from app.scheduler import compute_cohort_stats, scheduler
 
 
 @asynccontextmanager
