@@ -1,7 +1,9 @@
-import pytest
-from sqlalchemy import select
-from app.models.event import GameEventModel
 import uuid
+
+import pytest
+from app.models.event import GameEventModel
+from sqlalchemy import select
+
 
 @pytest.mark.asyncio
 async def test_valid_event_stored(async_client, db_session):
@@ -71,3 +73,52 @@ async def test_duplicate_event_idempotency(async_client, db_session):
 
     records = result.scalars().all()
     assert len(records) == 1
+
+@pytest.mark.asyncio
+async def test_batch_event_idempotency(async_client, db_session):
+
+    event_a = str(uuid.uuid4())
+    event_b = str(uuid.uuid4())
+
+    events = [
+        {
+            "event_id": event_a,
+            "event_type": "player_move",
+            "player_id": "player_101",
+            "session_id": "sess_batch",
+            "timestamp": "2026-05-14T14:00:00Z",
+            "event_data": {"platform": "PC"},
+            "metadata": {}
+        },
+        {
+            "event_id": event_b,
+            "event_type": "score_update",
+            "player_id": "player_101",
+            "session_id": "sess_batch",
+            "timestamp": "2026-05-14T14:01:00Z",
+            "event_data": {"score": 100},
+            "metadata": {}
+        },
+        {
+            "event_id": event_a,
+            "event_type": "player_move",
+            "player_id": "player_101",
+            "session_id": "sess_batch",
+            "timestamp": "2026-05-14T14:00:00Z",
+            "event_data": {"platform": "PC"},
+            "metadata": {}
+        }
+    ]
+
+    response = await async_client.post("/v1/events/batch", json=events)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ingested": 2,
+        "skipped": 1
+    }
+
+    result = await db_session.execute(select(GameEventModel))
+    stored_events = result.scalars().all()
+
+    assert len(stored_events) == 2
