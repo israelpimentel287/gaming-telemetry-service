@@ -1,139 +1,268 @@
-Gaming Telemetry Service
+# Gaming Telemetry Service
 
-A real-time telemetry analysis system that ingests player events and detects suspicious behavior like impossible movement speeds by reconstructing player state from timestamped event streams.
+A real-time gaming telemetry backend that ingests timestamped player events and detects suspicious behavior such as impossible movement speeds, abnormal scoring rates, and bot-like activity.
 
-Stack: FastAPI · PostgreSQL · SQLAlchemy 2.0 (async) · Pydantic v2 · Alembic · APScheduler
+Built to demonstrate asynchronous API design, PostgreSQL data modeling, event analysis, fraud detection, background processing, and database performance considerations.
 
-Architecture
+## Tech Stack
+
+* **Python**
+* **FastAPI** — asynchronous REST API
+* **Pydantic** — request validation and serialization
+* **SQLAlchemy 2.0** — asynchronous database access
+* **PostgreSQL** — persistent event and fraud data
+* **asyncpg** — PostgreSQL async driver
+* **Alembic** — database migrations
+* **APScheduler** — scheduled cohort statistics
+* **pytest** — automated testing
+
+## Architecture
+
+```text
 Client
-  ↓
-API Layer
-  ↓
-Validation Layer
-  ↓
-Analysis Layer
-(state reconstruction + fraud detection)
-  ↓
-Persistence Layer
-(PostgreSQL)
-Layer	Responsibility
-API	Receives telemetry events and routes requests
-Validation	Validates schema and required metadata
-Analysis	Reconstructs player state and detects anomalies
-Persistence	Stores telemetry events, sessions, and fraud flags
-Key Design Decisions
+  │
+  ▼
+FastAPI API
+  │
+  ├── Validation
+  ├── Event Ingestion
+  └── Background Fraud Analysis
+          │
+          ├── Movement Analysis
+          ├── Score-Rate Analysis
+          ├── Statistical Analysis
+          └── Bot Detection
+                  │
+                  ▼
+             PostgreSQL
+```
 
-State reconstruction inside the analysis layer
+### Layer Responsibilities
 
-Player state is only reconstructed to support behavioral analysis. Keeping it in the same layer reduces complexity and keeps the detection pipeline easier to reason about while the system remains focused on event-driven fraud analysis.
+| Layer       | Responsibility                                              |
+| ----------- | ----------------------------------------------------------- |
+| API         | Receives telemetry events and exposes metrics               |
+| Validation  | Validates incoming event structure and values               |
+| Analysis    | Reconstructs player state and evaluates suspicious behavior |
+| Persistence | Stores events, flags, and cohort statistics                 |
+| Scheduler   | Periodically calculates cohort statistics                   |
 
-Selective event analysis
+## Event Processing
 
-Only a subset of event types are analyzed to keep the fraud detection pipeline focused and avoid unnecessary processing on telemetry that is irrelevant to behavioral analysis.
+The service accepts timestamped player events and stores them in PostgreSQL.
 
-Schema validation before analysis
+Supported event types:
 
-Events are validated before analysis to ensure malformed or incomplete telemetry does not produce invalid fraud detections or corrupt downstream analysis.
+* `player_move`
+* `score_update`
+* `session_start`
+* `session_end`
 
-Fraud Detection
+Example:
 
-The fraud detection system analyzes sequential player movement events within the same session to detect impossible movement speeds. When a new movement event arrives, the analysis layer retrieves the previous movement event, calculates the distance traveled and elapsed time between the two events, and derives the player's movement speed:
-
-v = d / t
-
-If the calculated speed exceeds the configured threshold, the event is flagged as suspicious. Rather than analyzing events in isolation, the system reconstructs player behavior over time using timestamped telemetry data.
-
-Fraud analysis runs as a background task after event ingestion. Cohort statistics used by the fraud detection system are recalculated periodically by APScheduler.
-
-API
-
-The API is organized around two core responsibilities: telemetry ingestion and telemetry analytics.
-
-Method	Endpoint	Description
-POST	/v1/events	Ingest a single telemetry event
-POST	/v1/events/batch	Ingest multiple telemetry events
-GET	/v1/metrics/dau	Retrieve daily active user metrics
-GET	/v1/metrics/events-by-type	Retrieve aggregated event counts
-GET	/v1/metrics/session-length	Retrieve session length percentiles
-GET	/v1/metrics/flagged-players	Retrieve flagged players
-GET	/v1/metrics/player-risk-score/{player_id}	Retrieve a player risk score
-
-Example Event Payload
-
-POST /v1/events
+```json
 {
   "event_id": "550e8400-e29b-41d4-a716-446655440000",
   "event_type": "player_move",
-  "timestamp": "2026-04-01T21:55:38Z",
+  "timestamp": "2026-01-01T12:00:00Z",
   "player_id": "player_123",
   "session_id": "session_456",
   "metadata": {
     "position": {
-      "x": 125.4,
-      "y": 410.2
+      "x": 120,
+      "y": 340
     }
   }
 }
+```
 
-Interactive API docs are available at http://localhost:8000/docs after startup.
+After validation and persistence, eligible events are analyzed for suspicious behavior.
 
-Setup
+## Fraud Detection
 
-1. Clone the repository
+The service evaluates multiple signals rather than relying on a single rule.
 
-git clone https://github.com/israelpimentel287/gaming-telemetry-service.git
+### Impossible Movement
 
-cd gaming-telemetry-service
+For movement events, the service finds the player's previous movement within the same session and calculates:
 
-2. Create and activate a virtual environment
+```text
+distance / elapsed time = movement speed
+```
 
-python -m venv .venv
+Movement exceeding the configured threshold can generate a fraud flag.
 
-Windows:
+### Abnormal Score Rate
 
-.venv\Scripts\activate
+Score updates are compared against the time elapsed since the player's session started.
 
-macOS/Linux:
+An unusually high score-per-second rate can indicate suspicious behavior.
 
-source .venv/bin/activate
+### Statistical Anomaly Detection
 
-3. Install dependencies
+The service periodically calculates cohort statistics and uses them to identify unusually large deviations from the normal population.
 
-pip install -r requirements.txt
+```text
+z-score = (value - mean) / standard deviation
+```
 
-4. Configure environment variables
+If sufficient cohort statistics are unavailable, the statistical check is skipped.
 
-Create a .env file:
+### Bot Detection
 
-DATABASE_URL=postgresql+asyncpg://postgres:<password>@localhost:5432/gaming_telemetry
+Recent player activity is examined for unusually consistent timing patterns.
 
-Make sure PostgreSQL is running and the gaming_telemetry database exists.
+The check also accounts for insufficient variation in event intervals to avoid flagging players when there is not enough data.
 
-5. Run database migrations
+## Duplicate Event Handling
 
-alembic upgrade head
+Telemetry systems can receive the same event more than once.
 
-6. Start the API server
+`event_id` is used as the database primary key, allowing PostgreSQL to enforce uniqueness even when concurrent requests attempt to insert the same event.
 
-uvicorn app.main:app --reload --port 8000
+Duplicate insertion attempts are handled through `IntegrityError` handling rather than relying only on a preliminary existence check.
 
-7. Run tests
+## Background Fraud Analysis
 
+Event ingestion and fraud analysis are separated.
+
+The API validates and persists the incoming event, then schedules eligible fraud analysis as a FastAPI background task.
+
+This keeps the ingestion path focused on accepting valid telemetry while allowing analysis to happen after the response has been prepared.
+
+## Database Design
+
+The service uses PostgreSQL with asynchronous SQLAlchemy.
+
+### `game_events`
+
+Stores incoming telemetry events.
+
+Key fields include:
+
+* `event_id`
+* `event_type`
+* `player_id`
+* `session_id`
+* `timestamp`
+* `event_data` (`JSONB`)
+
+Indexes support common player- and timestamp-based queries.
+
+### `player_flag`
+
+Stores detected suspicious behavior.
+
+Key fields include:
+
+* `flag_id`
+* `player_id`
+* `flag_type`
+* `severity`
+* `timestamp`
+* `context`
+* `status`
+
+Required fields are enforced at the database level.
+
+### `cohort_stats`
+
+Stores periodically calculated statistics used by statistical fraud detection.
+
+## Metrics API
+
+| Endpoint                            | Purpose                      |
+| ----------------------------------- | ---------------------------- |
+| `GET /v1/metrics/dau`               | Daily active users           |
+| `GET /v1/metrics/events-by-type`    | Event counts grouped by type |
+| `GET /v1/metrics/session-length`    | Session-duration metrics     |
+| `GET /v1/metrics/flagged-players`   | Cursor-paginated fraud flags |
+| `GET /v1/metrics/player-risk-score` | Player risk analysis         |
+
+Flag pagination uses a stable ordering:
+
+```text
+timestamp DESC
+flag_id DESC
+```
+
+This keeps pagination deterministic when multiple flags share the same timestamp.
+
+## Health Check
+
+```text
+GET /health
+```
+
+The endpoint verifies database connectivity with:
+
+```sql
+SELECT 1
+```
+
+A successful connection returns:
+
+```json
+{
+  "status": "healthy"
+}
+```
+
+Database failures return HTTP `503`.
+
+## Testing
+
+The project uses `pytest` for automated testing.
+
+Tests use a dedicated database configuration rather than the development database.
+
+Run the test suite with:
+
+```bash
 pytest
+```
 
-8. Send a sample telemetry event
+## Database Migrations
 
-POST /v1/events
-{
-  "event_id": "550e8400-e29b-41d4-a716-446655440000",
-  "event_type": "player_move",
-  "timestamp": "2026-04-01T21:55:38Z",
-  "player_id": "player_123",
-  "session_id": "session_456",
-  "metadata": {
-    "position": {
-      "x": 125.4,
-      "y": 410.2
-    }
-  }
-}
+Alembic manages database schema changes.
+
+```bash
+alembic upgrade head
+```
+
+Migrations cover the initial schema as well as later changes such as telemetry JSON data, indexes, cohort statistics, and database constraints.
+
+## Running Locally
+
+### 1. Clone
+
+```bash
+git clone https://github.com/israelpimentel287/gaming-telemetry-service.git
+cd gaming-telemetry-service
+```
+
+### 2. Install dependencies
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+### 3. Configure PostgreSQL
+
+Set the database connection through the environment:
+
+```text
+DATABASE_URL=postgresql+asyncpg://user:password@localhost/gaming_telemetry
+```
+
+### 4. Run migrations
+
+```bash
+alembic upgrade head
+```
+
+### 5. Start the application
+
+```bash
+uvicorn app.main:app --reload
+```
